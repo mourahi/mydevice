@@ -1,44 +1,41 @@
-
-name: macOS + Tailscale + Custom Script
+name: Linux + Tailscale + Custom Script
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-macos:
-    runs-on: macos-latest
+  secure-linux:
+    runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
       - name: Install Tailscale
         run: |
-          brew install --cask tailscale
+          curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Start and Connect Tailscale
         run: |
-          # Démarrer le service Tailscale sur macOS
-          sudo open -a Tailscale
-          sleep 5
+          # Démarrer le service Tailscale sous Linux (systemd ou en arrière-plan)
+          sudo systemctl enable --now tailscaled
           
-          # Connexion avec la clé d'authentification et un nom d'hôte unique
-          sudo /Applications/Tailscale.app/Contents/MacOS/Tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-macos-$GITHUB_RUN_ID
+          # Connexion avec la clé d'authentification
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-linux-$GITHUB_RUN_ID
           
           # Récupération de l'adresse IP Tailscale
-          TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4)
-          echo "TAILSCALE_IP=$TS_IP" >> $github_env
+          TS_IP=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
           echo "Tailscale IP assigned: $TS_IP"
 
       - name: Verify Connectivity
         run: |
-          echo "=== MACOS ACCESS INFO ==="
+          echo "=== LINUX ACCESS INFO ==="
           echo "Tailscale IP: ${{ env.TAILSCALE_IP }}"
           echo "========================="
           
-          # Test simple de connectivité SSH (activé par défaut sur macOS runner)
+          # Test de port SSH
           nc -zv ${{ env.TAILSCALE_IP }} 22 || true
 
       - name: Download and Run Startup Script
         run: |
-          # URL de votre script pour macOS (remplacez le .bat par un script .sh adapté à macOS)
           SCRIPT_URL="https://gitlab.com/MR.English2008/pcme_rdp/-/raw/main/startup.sh"
           TARGET_PATH="$HOME/Downloads/startup.sh"
           
@@ -48,7 +45,6 @@ jobs:
           chmod +x "$TARGET_PATH"
           echo "✔ Script downloaded successfully"
           
-          # Exécution du script
           bash "$TARGET_PATH" || true
 
       - name: Keep Runner Alive
