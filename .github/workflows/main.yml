@@ -39,20 +39,25 @@ jobs:
           sudo systemsetup -setremotelogin on
           echo "✅ SSH activé."
 
-      - name: Configure macOS VNC & Auto-Login Session
+      - name: Configure macOS VNC & Display Session
         run: |
-          echo "=== Activation du serveur VNC et déverrouillage de la session ==="
+          echo "=== Activation complète de VNC et configuration des accès ==="
+          # Redéfinition du mot de passe utilisateur
           sudo sysadminctl -resetPasswordFor runner -newPassword "adil@2026"
           
-          # Activation du Remote Desktop / VNC avec prise en charge du mot de passe
+          # Activation du service VNC / ARD avec support legacy et mot de passe VNC dédié
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on \
             -clientopts -setvnclegacy -vnclegacy yes \
             -clientopts -setvncpw -vncpasswd "adil@2026" \
             -restart -agent -privs -all
 
+          # Activation de l'authentification VNC
           sudo defaults write /Library/Preferences/com.apple.AppleVNCServer VNCAuthenticationEnabled -int 1
-          echo "✅ Service VNC configuré."
+
+          # Démarrage forcé de l'interface graphique (WindowServer)
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.WindowServer.plist 2>/dev/null || true
+          echo "✅ Serveur VNC et session graphique prêts."
 
       - name: Install Tailscale CLI
         run: |
@@ -89,16 +94,17 @@ jobs:
           echo "=================================================="
           echo "🎉 MAC DISTANT PRÊT EN SSH ET VNC !"
           echo "=================================================="
-          echo "📡 Connexion SSH depuis Fedora :"
+          echo "📡 Connexion SSH directe (Fedora Terminal) :"
           echo "   ssh runner@$TS_IP"
           echo "--------------------------------------------------"
-          echo "🖥️  Accès VNC Graphique depuis Fedora :"
-          echo "   1. Dans un terminal : ssh -L 5900:localhost:5900 runner@$TS_IP"
-          echo "   2. Dans 'Connexions' : vnc://localhost"
+          echo "🖥️  Tunnel SSH pour accès VNC Graphique :"
+          echo "   1. Dans un terminal Fedora : ssh -L 5900:localhost:5900 runner@$TS_IP"
+          echo "   2. Dans Remmina / Connexions : localhost:5900"
+          echo "   3. Mot de passe VNC / Utilisateur : adil@2026"
           echo "=================================================="
           echo ""
 
-          # Maintien de la session active en arrière-plan
+          # Maintien du workflow actif
           while true; do
               echo "[$(date)] Session active..."
               sleep 300
