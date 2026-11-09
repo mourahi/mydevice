@@ -1,4 +1,4 @@
-name: macOS + Tailscale + VNC
+name: macOS + Tailscale + VNC (Ultimate Edition)
 
 on:
   workflow_dispatch:
@@ -9,6 +9,17 @@ jobs:
     timeout-minutes: 350
 
     steps:
+      - name: Check Tailscale Secret
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          if [ -z "$TAILSCALE_AUTHKEY" ]; then
+              echo "❌ ERREUR CRITIQUE : Le secret 'TAILSCALE_AUTHKEY' est introuvable dans vos paramètres GitHub."
+              echo "Veuillez l'ajouter dans 'Settings > Secrets and variables > Actions'."
+              exit 1
+          fi
+          echo "✅ Secret Tailscale détecté avec succès."
+
       - name: Configure macOS VNC / Screen Sharing
         run: |
           echo "=== Activation du partage d'écran (VNC) ==="
@@ -16,63 +27,75 @@ jobs:
 
           # Force le serveur VNC à accepter l'authentification
           sudo defaults write /Library/Preferences/com.apple.AppleVNCServer VNCAuthenticationEnabled -int 1
-          echo "VNC configuré."
+          sudo defaults write /Library/Preferences/com.apple.AppleVNCServer JoshiEnabled -bool false
+          echo "✅ Service VNC configuré."
 
       - name: Set up VNC / System User Password
         run: |
-          echo "=== Modification du mot de passe pour 'runner' ==="
-          # Utilisation de sysadminctl pour définir le mot de passe sans demander l'ancien
+          echo "=== Modification du mot de passe pour l'utilisateur 'runner' ==="
           sudo sysadminctl -resetPasswordFor runner -newPassword "adil@2026"
-          echo "Mot de passe utilisateur mis à jour avec succès."
+          echo "✅ Mot de passe utilisateur mis à jour avec succès."
 
-      - name: Install Tailscale
+      - name: Install Tailscale CLI
         run: |
-          echo "=== Installation de Tailscale ==="
-          brew install --cask tailscale
+          echo "=== Installation propre de Tailscale (CLI) ==="
+          curl -fsSL https://tailscale.com/install.sh | sh || { echo "❌ Échec de l'installation de Tailscale"; exit 1; }
 
       - name: Establish Tailscale Connection
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          echo "=== Connexion à Tailscale ==="
-          sudo /Applications/Tailscale.app/Contents/MacOS/Tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-runner-macos-$GITHUB_RUN_ID
+          echo "=== Lancement du daemon Tailscale ==="
+          sudo tailscaled --tun=userspace-networking &
+          sleep 3
 
-          # Attente de l'attribution de l'IP Tailscale
+          echo "=== Connexion au réseau Tailscale ==="
+          sudo tailscale up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --hostname=gh-runner-macos-$GITHUB_RUN_ID --accept-routes
+
+          # Attente de l'attribution de l'IP Tailscale avec affichage des tentatives
           TS_IP=""
           RETRIES=0
-          while [ -z "$TS_IP" ] && [ $RETRIES -lt 10 ]; do
-              TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4)
-              sleep 5
+          while [ -z "$TS_IP" ] && [ $RETRIES -lt 20 ]; do
+              TS_IP=$(tailscale ip -4 2>/dev/null || true)
+              if [ -z "$TS_IP" ]; then
+                  echo "⏳ En attente de l'adresse IP Tailscale ($RETRIES/20)..."
+                  sleep 5
+              fi
               RETRIES=$((RETRIES + 1))
           done
 
           if [ -z "$TS_IP" ]; then
-              echo "Erreur: IP Tailscale non assignée."
+              echo "❌ ERREUR : IP Tailscale non assignée après 100 secondes."
               exit 1
           fi
 
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-          echo "Adresse IP Tailscale attribuée : $TS_IP"
+          echo "✅ Adresse IP Tailscale attribuée avec succès : $TS_IP"
 
       - name: Verify VNC Port Accessibility
         run: |
-          TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4)
-          echo "Vérification du port VNC (5900) sur $TS_IP"
-          nc -zv $TS_IP 5900 || echo "Le port VNC peut être filtré mais le service tourne localement."
+          TS_IP=$(tailscale ip -4)
+          echo "Vérification de l'écoute du port VNC (5900) localement..."
+          nc -zv 127.0.0.1 5900 || echo "⚠️ Le port local VNC ne répond pas immédiatement, mais le service continue."
 
-      - name: Maintain Connection & Download Script
+      - name: Maintain Connection & Summary
         run: |
+          TS_IP=$(tailscale ip -4)
           echo ""
-          echo "=== ACCÈS DISTANT MAC (VNC) ==="
-          TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4)
-          echo "Adresse VNC : vnc://$TS_IP"
-          echo "Username    : runner"
-          echo "Password    : adil@2026"
-          echo "==============================="
+          echo "=================================================="
+          echo "🎉 MAC DISTANT PRÊT POUR LA CONNEXION !"
+          echo "=================================================="
+          echo "📡 Adresse VNC : vnc://$TS_IP"
+          echo "👤 Username    : runner"
+          echo "🔑 Password    : adil@2026"
+          echo "=================================================="
+          echo ""
+          echo "💡 Astuce sur Fedora : Ouvrez l'application 'Connexions',"
+          echo "   ajoutez une connexion VNC et entrez : vnc://$TS_IP"
           echo ""
 
-          # Maintient le runner en vie
+          # Maintient le runner en vie indéfiniment (jusqu'au timeout de 350 min)
           while true; do
-              echo "[$(date)] Mac VNC Session Active - Utilisez Ctrl+C dans le workflow pour terminer"
+              echo "[$(date)] Session Mac VNC active..."
               sleep 300
           done
