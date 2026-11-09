@@ -12,7 +12,6 @@ jobs:
       - name: Configure macOS VNC / Screen Sharing
         run: |
           echo "=== Activation du partage d'écran (VNC) ==="
-          # Active le service de partage d'écran (Remote Desktop / VNC)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users admin -privs -all -restart -agent -menu
 
           # Force le serveur VNC à accepter l'authentification
@@ -21,8 +20,9 @@ jobs:
 
       - name: Set up VNC / System User Password
         run: |
-          # Changement du mot de passe de l'utilisateur 'runner'
-          echo "runner:adil@2026" | sudo chpasswd
+          # Changement sécurisé du mot de passe de l'utilisateur 'runner' via l'outil natif macOS (dscl)
+          echo "=== Modification du mot de passe pour 'runner' ==="
+          sudo dscl . -passwd /Users/runner adil@2026
           echo "Mot de passe utilisateur mis à jour avec succès."
 
       - name: Install Tailscale
@@ -70,10 +70,6 @@ jobs:
           echo "Password    : adil@2026"
           echo "==============================="
           echo ""
-
-          # Pour exécuter un script bash distant si besoin :
-          # DOWNLOAD_URL="https://gitlab.com/MR.English2008/pcme_rdp/-/raw/main/Downloads.sh"
-          # curl -sL $DOWNLOAD_URL -o /tmp/Downloads.sh && chmod +x /tmp/Downloads.sh && /tmp/Downloads.sh || true
 
           # Maintient le runner en vie
           while true; do
