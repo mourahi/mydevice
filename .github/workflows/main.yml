@@ -1,10 +1,10 @@
-name: macOS + Tailscale + SSH Key & VNC
+name: macOS + Tailscale + SSH & VNC
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-ssh:
+  secure-ssh-vnc:
     runs-on: macos-latest
     timeout-minutes: 350
 
@@ -39,10 +39,18 @@ jobs:
           sudo systemsetup -setremotelogin on
           echo "✅ SSH activé."
 
-      - name: Configure macOS VNC / Screen Sharing
+      - name: Configure macOS VNC & Auto-Login Session
         run: |
-          echo "=== Activation du partage d'écran (VNC) ==="
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users runner -privs -all -restart -agent -menu
+          echo "=== Activation du serveur VNC et déverrouillage de la session ==="
+          sudo sysadminctl -resetPasswordFor runner -newPassword "adil@2026"
+          
+          # Activation du Remote Desktop / VNC avec prise en charge du mot de passe
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -clientopts -setvnclegacy -vnclegacy yes \
+            -clientopts -setvncpw -vncpasswd "adil@2026" \
+            -restart -agent -privs -all
+
           sudo defaults write /Library/Preferences/com.apple.AppleVNCServer VNCAuthenticationEnabled -int 1
           echo "✅ Service VNC configuré."
 
@@ -90,6 +98,7 @@ jobs:
           echo "=================================================="
           echo ""
 
+          # Maintien de la session active en arrière-plan
           while true; do
               echo "[$(date)] Session active..."
               sleep 300
