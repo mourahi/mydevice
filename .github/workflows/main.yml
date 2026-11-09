@@ -1,4 +1,4 @@
-name: macOS + Tailscale + SSH Key
+name: macOS + Tailscale + SSH Key & VNC
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
               echo "❌ ERREUR : Le secret 'TAILSCALE_AUTHKEY' est introuvable."
               exit 1
           fi
-          echo "✅ Secret détecté."
+          echo "✅ Secret Tailscale détecté."
 
       - name: Setup SSH Public Key & Enable SSH
         env:
@@ -25,14 +25,26 @@ jobs:
         run: |
           echo "=== Configuration de la clé SSH pour 'runner' ==="
           mkdir -p /Users/runner/.ssh
-          echo "$SSH_PUB_KEY" >> /Users/runner/.ssh/authorized_keys
+          if [ ! -z "$SSH_PUB_KEY" ]; then
+              echo "$SSH_PUB_KEY" >> /Users/runner/.ssh/authorized_keys
+              echo "✅ Clé publique SSH ajoutée."
+          else
+              echo "⚠️ Attention : SSH_PUBLIC_KEY est vide."
+          fi
           chmod 700 /Users/runner/.ssh
           chmod 600 /Users/runner/.ssh/authorized_keys
           sudo chown -R runner:staff /Users/runner/.ssh
 
           echo "=== Activation du service SSH ==="
           sudo systemsetup -setremotelogin on
-          echo "✅ SSH configuré avec succès."
+          echo "✅ SSH activé."
+
+      - name: Configure macOS VNC / Screen Sharing
+        run: |
+          echo "=== Activation du partage d'écran (VNC) ==="
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users runner -privs -all -restart -agent -menu
+          sudo defaults write /Library/Preferences/com.apple.AppleVNCServer VNCAuthenticationEnabled -int 1
+          echo "✅ Service VNC configuré."
 
       - name: Install Tailscale CLI
         run: |
@@ -55,25 +67,30 @@ jobs:
           done
 
           if [ -z "$TS_IP" ]; then
-              echo "❌ Erreur IP Tailscale"
+              echo "❌ Erreur : Impossible d'obtenir l'IP Tailscale"
               exit 1
           fi
 
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-          echo "✅ IP Tailscale : $TS_IP"
+          echo "✅ IP Tailscale attribuée : $TS_IP"
 
       - name: Maintain Connection & Summary
         run: |
           TS_IP=$(tailscale ip -4)
           echo ""
           echo "=================================================="
-          echo "🎉 MAC DISTANT PRÊT EN SSH (SANS MOT DE PASSE) !"
+          echo "🎉 MAC DISTANT PRÊT EN SSH ET VNC !"
           echo "=================================================="
-          echo "📡 Commande depuis Fedora : ssh runner@$TS_IP"
+          echo "📡 Connexion SSH depuis Fedora :"
+          echo "   ssh runner@$TS_IP"
+          echo "--------------------------------------------------"
+          echo "🖥️  Accès VNC Graphique depuis Fedora :"
+          echo "   1. Dans un terminal : ssh -L 5900:localhost:5900 runner@$TS_IP"
+          echo "   2. Dans 'Connexions' : vnc://localhost"
           echo "=================================================="
           echo ""
 
           while true; do
-              echo "[$(date)] Session SSH active..."
+              echo "[$(date)] Session active..."
               sleep 300
           done
