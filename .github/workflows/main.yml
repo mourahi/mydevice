@@ -1,10 +1,10 @@
-name: macOS + Tailscale Access
+name: macOS + Tailscale + SSH Key
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-mac:
+  secure-ssh:
     runs-on: macos-latest
     timeout-minutes: 350
 
@@ -14,66 +14,66 @@ jobs:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           if [ -z "$TAILSCALE_AUTHKEY" ]; then
-              echo "❌ ERREUR : Le secret 'TAILSCALE_AUTHKEY' n'est pas défini dans GitHub Secrets."
+              echo "❌ ERREUR : Le secret 'TAILSCALE_AUTHKEY' est introuvable."
               exit 1
           fi
-          echo "✅ Secret trouvé."
+          echo "✅ Secret détecté."
 
-      - name: Configure System Password & Enable SSH
+      - name: Setup SSH Public Key & Enable SSH
+        env:
+          SSH_PUB_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
         run: |
-          echo "=== Activation SSH & Mot de passe ==="
-          sudo sysadminctl -resetPasswordFor runner -newPassword "adil@2026"
-          sudo systemsetup -setremotelogin on
-          echo "✅ SSH activé."
+          echo "=== Configuration de la clé SSH pour 'runner' ==="
+          mkdir -p /Users/runner/.ssh
+          echo "$SSH_PUB_KEY" >> /Users/runner/.ssh/authorized_keys
+          chmod 700 /Users/runner/.ssh
+          chmod 600 /Users/runner/.ssh/authorized_keys
+          sudo chown -R runner:staff /Users/runner/.ssh
 
-      - name: Install & Launch Tailscale
+          echo "=== Activation du service SSH ==="
+          sudo systemsetup -setremotelogin on
+          echo "✅ SSH configuré avec succès."
+
+      - name: Install Tailscale CLI
+        run: |
+          brew install tailscale
+
+      - name: Establish Tailscale Connection
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          echo "=== Installation de Tailscale ==="
-          brew install tailscale
           sudo tailscaled --tun=userspace-networking &
           sleep 3
-
-          echo "=== Connexion ==="
-          sudo tailscale up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --hostname=gh-runner-mac-$GITHUB_RUN_ID --accept-routes
+          sudo tailscale up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --hostname=gh-runner-macos-$GITHUB_RUN_ID --accept-routes
 
           TS_IP=""
           RETRIES=0
           while [ -z "$TS_IP" ] && [ $RETRIES -lt 20 ]; do
               TS_IP=$(tailscale ip -4 2>/dev/null || true)
-              if [ -z "$TS_IP" ]; then
-                  echo "⏳ Attente de l'IP Tailscale ($RETRIES/20)..."
-                  sleep 5
-              fi
+              sleep 5
               RETRIES=$((RETRIES + 1))
           done
 
           if [ -z "$TS_IP" ]; then
-              echo "❌ Impossible d'obtenir l'IP Tailscale."
+              echo "❌ Erreur IP Tailscale"
               exit 1
           fi
 
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-          echo "✅ IP attribuée : $TS_IP"
+          echo "✅ IP Tailscale : $TS_IP"
 
       - name: Maintain Connection & Summary
         run: |
           TS_IP=$(tailscale ip -4)
           echo ""
           echo "=================================================="
-          echo "🎉 MAC DISTANT EN LIGNE ET PRÊT !"
+          echo "🎉 MAC DISTANT PRÊT EN SSH (SANS MOT DE PASSE) !"
           echo "=================================================="
-          echo "📡 Adresse IP Tailscale : $TS_IP"
-          echo "👤 Username             : runner"
-          echo "🔑 Password             : adil@2026"
-          echo "--------------------------------------------------"
-          echo "💻 Connexion SSH (Recommandée) :"
-          echo "   ssh runner@$TS_IP"
+          echo "📡 Commande depuis Fedora : ssh runner@$TS_IP"
           echo "=================================================="
           echo ""
 
           while true; do
-              echo "[$(date)] Session Mac active..."
+              echo "[$(date)] Session SSH active..."
               sleep 300
           done
