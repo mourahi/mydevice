@@ -38,25 +38,22 @@ jobs:
 
       - name: Install Tailscale CLI
         run: |
-          echo "=== Installation propre de Tailscale (CLI) ==="
+          echo "=== Installation propre de Tailscale ==="
           curl -fsSL https://tailscale.com/install.sh | sh || { echo "❌ Échec de l'installation de Tailscale"; exit 1; }
 
       - name: Establish Tailscale Connection
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          echo "=== Lancement du daemon Tailscale ==="
-          sudo tailscaled --tun=userspace-networking &
-          sleep 3
-
           echo "=== Connexion au réseau Tailscale ==="
-          sudo tailscale up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --hostname=gh-runner-macos-$GITHUB_RUN_ID --accept-routes
+          # Utilisation du chemin complet de l'exécutable Tailscale sur macOS
+          sudo /Applications/Tailscale.app/Contents/MacOS/tailscale up --authkey="${{ secrets.TAILSCALE_AUTHKEY }}" --hostname=gh-runner-macos-$GITHUB_RUN_ID --accept-routes
 
           # Attente de l'attribution de l'IP Tailscale avec affichage des tentatives
           TS_IP=""
           RETRIES=0
           while [ -z "$TS_IP" ] && [ $RETRIES -lt 20 ]; do
-              TS_IP=$(tailscale ip -4 2>/dev/null || true)
+              TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/tailscale ip -4 2>/dev/null || true)
               if [ -z "$TS_IP" ]; then
                   echo "⏳ En attente de l'adresse IP Tailscale ($RETRIES/20)..."
                   sleep 5
@@ -74,13 +71,13 @@ jobs:
 
       - name: Verify VNC Port Accessibility
         run: |
-          TS_IP=$(tailscale ip -4)
+          TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/tailscale ip -4)
           echo "Vérification de l'écoute du port VNC (5900) localement..."
           nc -zv 127.0.0.1 5900 || echo "⚠️ Le port local VNC ne répond pas immédiatement, mais le service continue."
 
       - name: Maintain Connection & Summary
         run: |
-          TS_IP=$(tailscale ip -4)
+          TS_IP=$(/Applications/Tailscale.app/Contents/MacOS/tailscale ip -4)
           echo ""
           echo "=================================================="
           echo "🎉 MAC DISTANT PRÊT POUR LA CONNEXION !"
